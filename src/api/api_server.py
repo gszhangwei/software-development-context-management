@@ -9,12 +9,11 @@ PromptX RESTful API服务器
 - 搜索和分析API
 """
 
-import json
 import asyncio
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+import json
 from datetime import datetime
-from dataclasses import asdict
+from pathlib import Path
+from typing import List, Optional
 
 try:
     from fastapi import FastAPI, HTTPException, Depends, Query, Body, Path as PathParam
@@ -30,10 +29,10 @@ except ImportError:
     print("FastAPI not available, falling back to basic HTTP server")
 
 from ..core.directory_manager import DirectoryManager
-from ..core.markdown_engine import MarkdownEngine, MemoryEntry
+from ..core.markdown_engine import MarkdownEngine
 from ..core.advanced_search import AdvancedSearchEngine, SearchConfig
 from ..core.content_optimizer import ContentOptimizer, OptimizationConfig
-from ..core.template_engine import TemplateEngine, RenderContext
+from ..core.template_engine import TemplateEngine
 from ..core.collaboration_manager import CollaborationManager, ShareType, AccessLevel
 from ..commands.team_memory_command import TeamMemoryCommand
 from ..commands.team_context_command import TeamContextCommand
@@ -486,8 +485,8 @@ if not HAS_FASTAPI:
     import http.server
     import socketserver
     import urllib.parse
-    import threading
-    
+
+
     class SimpleAPIHandler(http.server.BaseHTTPRequestHandler):
         """简单的API处理器"""
         
