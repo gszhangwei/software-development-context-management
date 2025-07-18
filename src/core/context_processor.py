@@ -1,5 +1,5 @@
 """
-PromptX上下文处理器
+ContextX上下文处理器
 
 负责将团队记忆、配置和seven_stage_framework模板转换为结构化的上下文，支持：
 - 记忆内容的智能聚合和过滤
@@ -183,7 +183,7 @@ class ContextProcessor:
         """生成仅基于记忆的上下文"""
         memories = self._load_team_memories(team_path, config)
         
-        content_sections = ["# Team Memory Context", ""]
+        content_sections = []
         
         if memories:
             # 按类型组织记忆
@@ -191,10 +191,6 @@ class ContextProcessor:
             
             for memory_type, type_memories in memory_by_type.items():
                 if type_memories:
-                    content_sections.extend([
-                        f"## {memory_type.title()} Memory",
-                        ""
-                    ])
                     
                     for memory in type_memories:
                         content_sections.extend([
@@ -227,14 +223,12 @@ class ContextProcessor:
     
     def _generate_framework_only_context(self, config: ContextGenerationConfig, team_path: Path) -> GeneratedContext:
         """生成仅基于七阶段框架的上下文"""
-        content_sections = ["# Seven Stage Framework Context", ""]
+        content_sections = []
         
         # 加载概述
         overview_content = self._load_framework_stage("overview")
         if overview_content:
             content_sections.extend([
-                "## Framework Overview",
-                "",
                 overview_content,
                 "",
                 "---",
@@ -278,7 +272,7 @@ class ContextProcessor:
         """生成混合模式上下文（记忆+框架）"""
         memories = self._load_team_memories(team_path, config)
         
-        content_sections = ["# Hybrid Context: Framework + Memory", ""]
+        content_sections = []
         
         # 1. 七阶段框架作为主体结构
         included_stages = []
@@ -318,10 +312,6 @@ class ContextProcessor:
         if memories:  # 只有当有记忆时才尝试添加未匹配的记忆
             unmatched_memories = self._get_unmatched_memories(memories, config.include_framework_stages)
             if unmatched_memories:
-                content_sections.extend([
-                    "## Additional Team Experience",
-                    ""
-                ])
                 
                 for memory in unmatched_memories[:5]:  # 最多5个
                     content_sections.extend([
@@ -500,8 +490,6 @@ class ContextProcessor:
             content = self._load_team_context_file(team_path, stage)
             if content:
                 sections.extend([
-                    f"### {stage.replace('-', ' ').title()}",
-                    "",
                     content,
                     "",
                     "---",

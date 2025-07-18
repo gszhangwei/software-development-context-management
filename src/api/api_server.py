@@ -1,5 +1,5 @@
 """
-PromptX RESTful API服务器
+ContextX API服务器
 
 提供完整的HTTP API接口，包括：
 - 团队管理API
@@ -108,10 +108,8 @@ class APIServer:
         self.collaboration_manager = CollaborationManager(base_path)
         
         # 初始化命令
-        self.memory_command = TeamMemoryCommand()
-        self.memory_command.base_path = base_path
-        self.context_command = TeamContextCommand()
-        self.context_command.base_path = base_path
+        self.memory_command = TeamMemoryCommand(base_path)
+        self.context_command = TeamContextCommand(base_path)
         
         # 安全设置
         self.security = HTTPBearer() if HAS_FASTAPI else None
@@ -119,8 +117,8 @@ class APIServer:
         if HAS_FASTAPI:
             # 创建FastAPI应用
             self.app = FastAPI(
-                title="PromptX Team Context API",
-                description="RESTful API for PromptX Team Context System",
+                title="ContextX Team Context API",
+                description="RESTful API for ContextX Team Context System",
                 version="1.0.0"
             )
             
@@ -458,7 +456,7 @@ class APIServer:
             print("API server not initialized")
             return
         
-        print(f"Starting PromptX API server on {self.host}:{self.port}")
+        print(f"Starting ContextX API server on {self.host}:{self.port}")
         
         config = uvicorn.Config(
             app=self.app,

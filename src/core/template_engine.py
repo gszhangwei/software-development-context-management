@@ -1,5 +1,5 @@
 """
-PromptX上下文模板引擎
+ContextX上下文模板引擎
 
 提供灵活的模板系统，支持：
 - 自定义上下文模板定义
@@ -623,7 +623,7 @@ Generated at {{now()}}""",
                 TemplateVariable("memories", "list", "相关记忆列表", [])
             ],
             description="需求分析上下文模板",
-            author="PromptX System",
+            author="ContextX System",
             tags=["requirements", "analysis", "context"]
         )
         
@@ -701,7 +701,7 @@ Generated at {{now()}}""",
                 TemplateVariable("memories", "list", "相关记忆列表", [])
             ],
             description="解决方案设计上下文模板",
-            author="PromptX System",
+            author="ContextX System",
             tags=["solution", "design", "context"]
         )
         

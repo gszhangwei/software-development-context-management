@@ -1,5 +1,5 @@
 """
-PromptX团队命令基础框架
+ContextX团队命令基础框架
 
 定义所有团队命令的基础接口和通用功能，支持：
 - 统一的命令接口
@@ -50,7 +50,7 @@ class BaseCommand(abc.ABC):
         初始化基础命令
         
         Args:
-            root_path: PromptX根目录路径
+            root_path: ContextX根目录路径
         """
         self.directory_manager = DirectoryManager(root_path)
         self.markdown_engine = MarkdownEngine()

@@ -1,5 +1,5 @@
 """
-PromptX团队目录结构管理器
+ContextX团队目录结构管理器
 
 负责管理基于team隔离的目录结构，支持：
 - 团队目录创建和初始化
@@ -42,10 +42,10 @@ class DirectoryManager:
         初始化目录管理器
         
         Args:
-            root_path: PromptX根目录路径，默认为当前目录下的.promptx
+            root_path: ContextX根目录路径，默认为当前目录下的.ContextX
         """
         if root_path is None:
-            root_path = Path.cwd() / '.promptx'
+            root_path = Path.cwd() / '.ContextX'
         
         self.root_path = Path(root_path)
         self.teams_path = self.root_path / 'teams'

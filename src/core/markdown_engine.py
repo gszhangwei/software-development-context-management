@@ -1,5 +1,5 @@
 """
-PromptX Markdown存储引擎
+ContextX Markdown存储引擎
 
 负责处理Markdown格式的文件存储和解析，支持：
 - 记忆条目的追加和检索
