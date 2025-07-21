@@ -1,5 +1,5 @@
 """
-PromptX高级记忆搜索引擎
+ContextX高级记忆搜索引擎
 
 提供智能的记忆搜索和语义匹配功能，包括：
 - 基于TF-IDF的文本相似度计算
@@ -8,17 +8,16 @@ PromptX高级记忆搜索引擎
 - 多维度搜索结果排序
 """
 
-import re
 import math
-import json
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, Tuple, Set
-from datetime import datetime
-from dataclasses import dataclass, field
+import re
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Tuple, Set
 
-from .markdown_engine import MarkdownEngine, MemoryEntry
 from .directory_manager import DirectoryManager
+from .markdown_engine import MarkdownEngine, MemoryEntry
 
 
 @dataclass
