@@ -107,7 +107,7 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
                          memory_types: str, output_format: str, save_results: bool,
                          project_scope: str, memory_importance: int,
                          max_memory_items: int, tags_filter: str,
-                         **kwargs) -> CommandResult:
+                         user_message: str = None, **kwargs) -> CommandResult:
         """Generate team context"""
         try:
             # Parse mode
@@ -129,7 +129,7 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
             )
             
             # Generate context
-            context = processor.generate_context(config)
+            context = processor.generate_context(config, user_message)
             
             # Prepare return data
             result_data = {

@@ -1,29 +1,38 @@
 """
-Claude API Integration Package
+Claude Agent模块
 
-This package provides Claude API integration with team context for the ContextX system.
+支持多种AI模型的统一接口
 """
 
-from .claude_api_client import (
-    ClaudeAPIClient,
-    create_claude_client,
-    quick_chat
+from .ai_model_base import AIModelBase
+from .claude_model_impl import ClaudeModel
+from .openai_model_impl import OpenAIModel
+from .ai_model_factory import (
+    create_ai_model,
+    create_claude_model,
+    create_openai_model,
+    list_available_models,
+    get_models_by_provider,
+    MODEL_CONFIGS
 )
-from .claude_model import ClaudeModel, create_claude_model
-from .claude_usage import ClaudeUsage, create_claude_usage
-from .claude_storage import ClaudeStorage, create_claude_storage
-from .claude_runner import ClaudeRunner, create_claude_runner
+from .model_runner import create_claude_runner, create_model_runner
+from .model_usage_manager import create_claude_usage, create_model_usage_manager
+from .model_storage_manager import create_claude_storage, create_model_storage_manager
 
 __all__ = [
-    'ClaudeAPIClient',
-    'create_claude_client', 
-    'quick_chat',
-    'ClaudeModel',
+    'AIModelBase',
+    'ClaudeModel', 
+    'OpenAIModel',
+    'create_ai_model',
     'create_claude_model',
-    'ClaudeUsage',
+    'create_openai_model',
+    'list_available_models',
+    'get_models_by_provider',
+    'MODEL_CONFIGS',
+    'create_claude_runner',
+    'create_model_runner',
     'create_claude_usage',
-    'ClaudeStorage',
+    'create_model_usage_manager',
     'create_claude_storage',
-    'ClaudeRunner',
-    'create_claude_runner'
+    'create_model_storage_manager'
 ] 

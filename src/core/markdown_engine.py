@@ -49,13 +49,14 @@ class MarkdownEngine:
     """Markdown存储引擎"""
     
     def __init__(self):
+        # 修改正则表达式以支持多行内容
         self.memory_entry_pattern = re.compile(
-            r'### 记忆项目 #(\w+)\n((?:- \*\*[^*]+\*\*:[^\n]*\n)+)',
-            re.MULTILINE
+            r'### 记忆项目 #(\w+)\n(.*?)(?=### 记忆项目 #|\Z)',
+            re.MULTILINE | re.DOTALL
         )
-        self.metadata_pattern = re.compile(r'- \*\*([^*]+)\*\*:\s*(.+)')
+        self.metadata_pattern = re.compile(r'- \*\*([^*]+)\*\*:\s*(.+?)(?=\n- \*\*|\Z)', re.DOTALL)
         
-    def read_memory_file(self, file_path: Path) -> List[MemoryEntry]:
+    def load_memories(self, file_path: Path) -> List[MemoryEntry]:
         """
         读取记忆文件并解析为记忆条目列表
         
@@ -88,16 +89,19 @@ class MarkdownEngine:
         entry_data = {'id': entry_id}
         
         for key, value in metadata_matches:
+            key = key.strip()
+            value = value.strip()
+            
             if key == '时间':
-                entry_data['timestamp'] = value.strip()
+                entry_data['timestamp'] = value
             elif key == '内容':
-                entry_data['content'] = value.strip()
+                entry_data['content'] = value
             elif key == '标签':
                 # 解析标签，移除#符号
                 tags = [tag.strip().lstrip('#') for tag in value.split() if tag.strip()]
                 entry_data['tags'] = tags
             elif key == '项目':
-                entry_data['project'] = value.strip()
+                entry_data['project'] = value
             elif key == '重要性':
                 # 计算星号数量
                 importance = value.count('⭐')
@@ -380,10 +384,10 @@ class MarkdownEngine:
     
     def load_memories(self, file_path: Path) -> List[MemoryEntry]:
         """
-        从Markdown文件加载记忆条目
+        读取记忆文件并解析为记忆条目列表
         
         Args:
-            file_path: Markdown文件路径
+            file_path: 记忆文件路径
             
         Returns:
             记忆条目列表
@@ -392,31 +396,17 @@ class MarkdownEngine:
             return []
         
         content = file_path.read_text(encoding='utf-8')
-        memories = []
+        entries = []
         
-        # 查找记忆条目
-        # 匹配格式：### Memory: ID
-        memory_pattern = re.compile(r'^### Memory: ([^\n]+)$', re.MULTILINE)
-        matches = list(memory_pattern.finditer(content))
+        # 使用正则表达式匹配记忆条目
+        matches = self.memory_entry_pattern.findall(content)
         
-        for i, match in enumerate(matches):
-            memory_id = match.group(1).strip()
-            start_pos = match.end()
-            
-            # 确定记忆内容的结束位置
-            if i + 1 < len(matches):
-                end_pos = matches[i + 1].start()
-            else:
-                end_pos = len(content)
-            
-            memory_content = content[start_pos:end_pos].strip()
-            
-            # 解析记忆内容
-            memory = self._parse_memory_content(memory_id, memory_content)
-            if memory:
-                memories.append(memory)
+        for entry_id, entry_content in matches:
+            entry = self._parse_memory_entry(entry_id, entry_content)
+            if entry:
+                entries.append(entry)
         
-        return memories
+        return entries
     
     def _parse_memory_content(self, memory_id: str, content: str) -> Optional[MemoryEntry]:
         """解析记忆内容"""

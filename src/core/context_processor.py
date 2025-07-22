@@ -153,12 +153,13 @@ class ContextProcessor:
             "constraints": "07_constraints.md"
         }
     
-    def generate_context(self, config: ContextGenerationConfig) -> GeneratedContext:
+    def generate_context(self, config: ContextGenerationConfig, user_message: str = None) -> GeneratedContext:
         """
         生成结构化上下文
         
         Args:
             config: 上下文生成配置
+            user_message: 用户消息，用于智能选择相关记忆
         
         Returns:
             生成的上下文
@@ -171,40 +172,43 @@ class ContextProcessor:
         
         # 根据模式生成上下文
         if config.mode == ContextMode.MEMORY_ONLY:
-            return self._generate_memory_only_context(config, team_path)
+            return self._generate_memory_only_context(config, team_path, user_message)
         elif config.mode == ContextMode.FRAMEWORK_ONLY:
             return self._generate_framework_only_context(config, team_path)
         elif config.mode == ContextMode.HYBRID:
-            return self._generate_hybrid_context(config, team_path)
+            return self._generate_hybrid_context(config, team_path, user_message)
         else:
             raise ValueError(f"Unsupported context mode: {config.mode}")
     
-    def _generate_memory_only_context(self, config: ContextGenerationConfig, team_path: Path) -> GeneratedContext:
+    def _generate_memory_only_context(self, config: ContextGenerationConfig, team_path: Path, user_message: str = None) -> GeneratedContext:
         """生成仅基于记忆的上下文"""
         memories = self._load_team_memories(team_path, config)
         
         content_sections = []
         
         if memories:
-            # 按类型组织记忆
-            memory_by_type = self._group_memories_by_type(memories)
+            # 如果提供了用户消息，智能选择相关记忆
+            if user_message:
+                relevant_memories = self._find_relevant_memories_by_message(memories, user_message)
+                selected_memories = relevant_memories[:10]  # 限制最多10个记忆
+            else:
+                # 否则按类型组织记忆
+                selected_memories = memories
             
-            for memory_type, type_memories in memory_by_type.items():
-                if type_memories:
-                    
-                    for memory in type_memories:
-                        content_sections.extend([
-                            f"### {memory.id}",
-                            f"**Project:** {memory.project}",
-                            f"**Importance:** {'⭐' * memory.importance}",
-                            f"**Tags:** {', '.join(memory.tags)}",
-                            f"**Timestamp:** {memory.timestamp}",
-                            "",
-                            memory.content,
-                            "",
-                            "---",
-                            ""
-                        ])
+            if selected_memories:
+                for memory in selected_memories:
+                    content_sections.extend([
+                        f"### {memory.id}",
+                        f"**Project:** {memory.project}",
+                        f"**Importance:** {'⭐' * memory.importance}",
+                        f"**Tags:** {', '.join(memory.tags)}",
+                        f"**Timestamp:** {memory.timestamp}",
+                        "",
+                        memory.content,
+                        "",
+                        "---",
+                        ""
+                    ])
         
         # 如果没有记忆，生成简洁的内容（不显示"No memories found"）
         if not memories:
@@ -268,13 +272,50 @@ class ContextProcessor:
             }
         )
     
-    def _generate_hybrid_context(self, config: ContextGenerationConfig, team_path: Path) -> GeneratedContext:
+    def _generate_hybrid_context(self, config: ContextGenerationConfig, team_path: Path, user_message: str = None) -> GeneratedContext:
         """生成混合模式上下文（记忆+框架）"""
         memories = self._load_team_memories(team_path, config)
         
         content_sections = []
+        used_memory_ids = set()  # 跟踪已使用的记忆，避免重复
         
-        # 1. 七阶段框架作为主体结构
+        # 0. 添加混合模式指导提示
+        content_sections.extend([
+            "先理解记忆的内容，再基于七步框架结合user_message生成具体的结构化提示词",
+            "",
+            "---",
+            ""
+        ])
+        
+        # 1. 记忆内容优先放置在前面 - 仅在有相关性时加载
+        if memories and user_message:
+            # 只有在提供用户消息时才尝试匹配记忆，避免无关记忆污染上下文
+            relevant_memories = self._find_relevant_memories_by_message(memories, user_message)
+            if relevant_memories:
+                # 限制最多5个最相关的记忆
+                top_memories = relevant_memories[:5]
+                for memory in top_memories:
+                    content_sections.extend([
+                        f"#团队记忆",
+                        f"### {memory.id}",
+                        f"**Project:** {memory.project}",
+                        f"**Importance:** {'⭐' * memory.importance}",
+                        f"**Tags:** {', '.join(memory.tags)}",
+                        "",
+                        memory.content,
+                        "",
+                        "---",
+                        ""
+                    ])
+                    used_memory_ids.add(memory.id)
+        
+        # 2. 七阶段框架作为主体结构
+        content_sections.extend([
+            "# 七步框架模板内容",
+            "",
+            ""
+        ])
+        
         included_stages = []
         for stage in config.include_framework_stages:
             stage_content = self._load_framework_stage(stage)
@@ -284,19 +325,6 @@ class ContextProcessor:
                     stage_content,
                     ""
                 ])
-                
-                # 2. 为每个阶段添加相关的记忆内容（仅在有记忆时显示）
-                relevant_memories = self._find_memories_for_stage(memories, stage)
-                if relevant_memories:
-                    
-                    for memory in relevant_memories[:3]:  # 限制每个阶段最多3个记忆
-                        content_sections.extend([
-                            f"**{memory.id}** ({memory.project})",
-                            f"*Importance: {'⭐' * memory.importance}, Tags: {', '.join(memory.tags)}*",
-                            "",
-                            memory.content,
-                            ""
-                        ])
                 
                 # 3. 加载团队自定义上下文（如果存在且有实际内容）
                 team_content = self._load_team_context_file(team_path, stage)
@@ -308,31 +336,15 @@ class ContextProcessor:
                 
                 content_sections.extend(["---", ""])
         
-        # 4. 添加未分类的重要记忆（仅在有记忆时显示）
-        if memories:  # 只有当有记忆时才尝试添加未匹配的记忆
-            unmatched_memories = self._get_unmatched_memories(memories, config.include_framework_stages)
-            if unmatched_memories:
-                
-                for memory in unmatched_memories[:5]:  # 最多5个
-                    content_sections.extend([
-                        f"### {memory.id}",
-                        f"**Project:** {memory.project}",
-                        f"**Tags:** {', '.join(memory.tags)}",
-                        "",
-                        memory.content,
-                        "",
-                        "---",
-                        ""
-                    ])
-        
         return GeneratedContext(
             team_name=config.team_name,
             mode=config.mode,
             content="\n".join(content_sections),
-            source_memories=[m.id for m in memories],
+            source_memories=list(used_memory_ids),  # 只包含实际使用的记忆ID
             framework_stages=included_stages,
             metadata={
-                'memory_count': len(memories),
+                'memory_count': len(used_memory_ids),  # 实际使用的记忆数量
+                'total_memories_available': len(memories),  # 总的可用记忆数量
                 'framework_stages_count': len(included_stages),
                 'hybrid_mode': True
             }
@@ -534,6 +546,133 @@ class ContextProcessor:
         # 按重要性排序
         relevant_memories.sort(key=lambda m: m.importance, reverse=True)
         return relevant_memories
+    
+    def _find_relevant_memories_by_message(self, memories: List[MemoryEntry], user_message: str) -> List[MemoryEntry]:
+        """根据用户消息智能选择相关记忆"""
+        if not user_message or not memories:
+            return []
+        
+        # 提取用户消息中的关键词
+        message_keywords = self._extract_keywords_from_message(user_message.lower())
+        
+        # 如果没有提取到关键词，说明消息与技术内容无关，不加载任何记忆
+        if not message_keywords:
+            return []
+        
+        # 为每个记忆计算相关性分数
+        scored_memories = []
+        for memory in memories:
+            score = self._calculate_memory_relevance_score(memory, message_keywords, user_message.lower())
+            # 提高相关性阈值：只有分数>=3.0才认为是相关的记忆
+            # 这样可以过滤掉弱相关的记忆，只保留真正相关的内容
+            if score >= 3.0:
+                scored_memories.append((memory, score))
+        
+        # 如果没有足够相关的记忆，返回空列表
+        if not scored_memories:
+            return []
+        
+        # 按相关性分数和重要性排序
+        scored_memories.sort(key=lambda x: (x[1], x[0].importance), reverse=True)
+        
+        return [memory for memory, score in scored_memories]
+    
+    def _extract_keywords_from_message(self, message: str) -> List[str]:
+        """从用户消息中提取关键词"""
+        import re
+        
+        # 过滤停用词 - 扩展列表，过滤更多无关词汇
+        stop_words = {
+            # 英文停用词
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+            'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+            'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those',
+            'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his',
+            'get', 'make', 'go', 'come', 'know', 'think', 'see', 'want', 'use', 'find', 'give', 'tell', 'work',
+            'call', 'try', 'ask', 'need', 'feel', 'become', 'leave', 'put', 'mean', 'keep', 'let', 'begin',
+            # 中文停用词
+            '我', '你', '他', '她', '它', '我们', '你们', '他们', '的', '了', '在', '是', '有', '这', '那',
+            '一个', '请', '帮', '我要', '需要', '希望', '可以', '如何', '怎么', '什么', '为什么', '因为',
+            '所以', '但是', '然后', '现在', '已经', '还是', '就是', '都是', '不是', '没有', '也是', '或者',
+            '其他', '其它', '一些', '很多', '非常', '特别', '比较', '觉得', '应该', '可能', '一直', '总是',
+            '从来', '从不', '永远', '马上', '立即', '现在', '以前', '以后', '今天', '明天', '昨天'
+        }
+        
+        keywords = []
+        
+        # 处理英文词汇（按空格分割）
+        english_words = re.findall(r'[a-zA-Z]+', message)
+        for word in english_words:
+            word_lower = word.lower()
+            # 提高英文单词的最小长度要求，避免提取无意义的短词
+            if len(word) >= 3 and word_lower not in stop_words:
+                keywords.append(word_lower)
+        
+        # 处理中文关键词（使用简单的规则识别）
+        chinese_text = re.sub(r'[^\u4e00-\u9fa5]', '', message)
+        
+        # 识别常见的技术术语和概念 - 更精准的匹配
+        tech_patterns = [
+            r'工作流', r'workflow', r'API', r'api', r'接口', r'数据库', r'database', 
+            r'认证', r'authentication', r'权限', r'authorization', r'管理', r'management',
+            r'服务', r'service', r'查询', r'query', r'分页', r'pagination', 
+            r'架构', r'architecture', r'实现', r'implementation', r'配置', r'configuration',
+            r'框架', r'framework', r'模型', r'model', r'业务', r'business', 
+            r'流程', r'process', r'功能', r'feature', r'模块', r'module', r'组件', r'component',
+            r'Rule', r'rule', r'Solution', r'solution', r'Prompt', r'prompt'
+        ]
+        
+        for pattern in tech_patterns:
+            matches = re.findall(pattern, message, re.IGNORECASE)
+            for match in matches:
+                if match.lower() not in [kw.lower() for kw in keywords]:
+                    keywords.append(match.lower())
+        
+        # 如果没有找到关键词，使用简单的字符切分作为备选
+        if not keywords and chinese_text:
+            # 简单的中文双字词提取
+            for i in range(len(chinese_text) - 1):
+                two_char = chinese_text[i:i+2]
+                if two_char not in stop_words:
+                    keywords.append(two_char)
+        
+        return list(set(keywords))  # 去重
+    
+    def _calculate_memory_relevance_score(self, memory: MemoryEntry, message_keywords: List[str], full_message: str) -> float:
+        """计算记忆与用户消息的相关性分数"""
+        score = 0.0
+        
+        # 1. 标签匹配 (权重: 3.0)
+        for tag in memory.tags:
+            tag_lower = tag.lower()
+            for keyword in message_keywords:
+                if keyword in tag_lower or tag_lower in keyword:
+                    score += 3.0
+        
+        # 2. 内容关键词匹配 (权重: 2.0)
+        memory_content_lower = memory.content.lower()
+        for keyword in message_keywords:
+            if keyword in memory_content_lower:
+                score += 2.0
+        
+        # 3. 项目名匹配 (权重: 1.5)
+        if memory.project and memory.project.lower() != 'general':
+            project_lower = memory.project.lower()
+            for keyword in message_keywords:
+                if keyword in project_lower or project_lower in keyword:
+                    score += 1.5
+        
+        # 4. 完整短语匹配 (权重: 4.0)
+        # 寻找用户消息中的2-3词组合是否在记忆内容中出现
+        for i in range(len(message_keywords) - 1):
+            phrase = " ".join(message_keywords[i:i+2])
+            if phrase in memory_content_lower:
+                score += 4.0
+        
+        # 5. 重要性加权
+        score *= (memory.importance / 3.0)  # 重要性归一化到相对权重
+        
+        return score
     
     def _get_unmatched_memories(self, memories: List[MemoryEntry], stages: List[str]) -> List[MemoryEntry]:
         """获取未匹配到任何阶段的记忆"""

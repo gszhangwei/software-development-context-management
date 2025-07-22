@@ -1,47 +1,40 @@
 """
-Claude模型创建和管理模块
+Claude模型实现模块
 
-负责Claude客户端的创建、配置和基本连接测试
+实现了基于Anthropic Claude API的AI模型
 """
 
 import sys
 import time
 from pathlib import Path
+from typing import Dict, Any
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# 检查依赖包
 try:
     import anthropic
     HAS_ANTHROPIC = True
 except ImportError:
     HAS_ANTHROPIC = False
-    print("❌ 需要安装anthropic库: pip install anthropic")
 
 from src.agent.env_config import get_env_config
+from .ai_model_base import AIModelBase
 
 
-class ClaudeModel:
-    """Claude模型管理类"""
+class ClaudeModel(AIModelBase):
+    """Claude模型实现类"""
     
-    def __init__(self, model_name="claude-sonnet-4-20250514"):
-        """
-        初始化Claude模型
-        
-        Args:
-            model_name: Claude模型名称
-        """
-        if not HAS_ANTHROPIC:
-            raise ImportError("需要安装anthropic库: pip install anthropic")
-        
-        self.model_name = model_name
-        self.client = None
-        self.api_key = None
-        self._initialize_client()
+    def _get_provider(self) -> str:
+        return "anthropic"
     
     def _initialize_client(self):
         """初始化Claude客户端"""
+        if not HAS_ANTHROPIC:
+            raise ImportError("需要安装anthropic库: pip install anthropic")
+        
         # 获取API密钥
         env_config = get_env_config()
         self.api_key = env_config.anthropic_api_key
@@ -52,19 +45,14 @@ class ClaudeModel:
         # 创建客户端
         self.client = anthropic.Anthropic(api_key=self.api_key)
     
-    def test_connection(self) -> dict:
-        """
-        测试Claude API连接
-        
-        Returns:
-            测试结果字典
-        """
+    def test_connection(self) -> Dict[str, Any]:
+        """测试Claude API连接"""
         try:
-            print(f"✅ API密钥已配置: {self.api_key[:8]}...{self.api_key[-4:]}")
+            print(f"✅ Anthropic API密钥已配置: {self.api_key[:8]}...{self.api_key[-4:]}")
             print("✅ Anthropic客户端创建成功")
             
             # 测试简单的API调用
-            print("🔄 测试简单API调用...")
+            print("🔄 测试Claude API调用...")
             start_time = time.time()
             
             message = self.client.messages.create(
@@ -83,6 +71,7 @@ class ClaudeModel:
             
             result = {
                 "success": True,
+                "provider": self.provider,
                 "response_time": end_time - start_time,
                 "total_tokens": message.usage.input_tokens + message.usage.output_tokens,
                 "input_tokens": message.usage.input_tokens,
@@ -92,7 +81,7 @@ class ClaudeModel:
                 "model_name": self.model_name
             }
             
-            print(f"✅ API调用成功!")
+            print(f"✅ Claude API调用成功!")
             print(f"⏱️  响应时间: {result['response_time']:.2f}秒")
             print(f"🔢 使用令牌: {result['total_tokens']}")
             print(f"📝 响应长度: {result['response_length']}字符")
@@ -103,27 +92,17 @@ class ClaudeModel:
             return result
             
         except Exception as e:
-            print(f"❌ 连接测试失败: {e}")
+            print(f"❌ Claude连接测试失败: {e}")
             return {
                 "success": False,
+                "provider": self.provider,
                 "error": str(e),
                 "model_name": self.model_name
             }
     
     def create_message(self, user_message: str, system_prompt: str = None, 
-                      max_tokens: int = 20000, temperature: float = 0.7) -> dict:
-        """
-        创建Claude消息
-        
-        Args:
-            user_message: 用户消息
-            system_prompt: 系统提示词
-            max_tokens: 最大令牌数
-            temperature: 温度参数
-        
-        Returns:
-            消息创建结果
-        """
+                      max_tokens: int = 20000, temperature: float = 0.7) -> Dict[str, Any]:
+        """创建Claude消息"""
         try:
             start_time = time.time()
             
@@ -151,6 +130,7 @@ class ClaudeModel:
             
             return {
                 "success": True,
+                "provider": self.provider,
                 "response_time": end_time - start_time,
                 "input_tokens": message.usage.input_tokens,
                 "output_tokens": message.usage.output_tokens,
@@ -167,29 +147,9 @@ class ClaudeModel:
         except Exception as e:
             return {
                 "success": False,
+                "provider": self.provider,
                 "error": str(e),
                 "model_name": self.model_name,
                 "system_prompt": system_prompt,
                 "user_message": user_message
-            }
-    
-    def get_client_info(self) -> dict:
-        """获取客户端信息"""
-        return {
-            "model_name": self.model_name,
-            "api_key_preview": f"{self.api_key[:8]}...{self.api_key[-4:]}" if self.api_key else None,
-            "client_initialized": self.client is not None
-        }
-
-
-def create_claude_model(model_name="claude-sonnet-4-20250514") -> ClaudeModel:
-    """
-    便捷函数：创建Claude模型实例
-    
-    Args:
-        model_name: Claude模型名称
-    
-    Returns:
-        ClaudeModel实例
-    """
-    return ClaudeModel(model_name=model_name) 
+            } 

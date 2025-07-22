@@ -58,6 +58,7 @@ class ClaudeAPIClient:
     def generate_team_context_system_prompt(
         self,
         team_name: str,
+        user_message: str = None,
         mode: str = "hybrid",
         stages: Optional[str] = None,
         memory_types: str = "all",
@@ -71,6 +72,7 @@ class ClaudeAPIClient:
         
         Args:
             team_name: Team name
+            user_message: User message for intelligent memory selection
             mode: Generation mode ('memory_only', 'framework_only', 'hybrid')
             stages: Framework stages (comma-separated or 'all')
             memory_types: Memory types ('declarative', 'procedural', 'episodic', 'all')
@@ -95,7 +97,8 @@ class ClaudeAPIClient:
             project_scope=project_scope,
             memory_importance=memory_importance,
             max_memory_items=max_memory_items,
-            tags_filter=tags_filter
+            tags_filter=tags_filter,
+            user_message=user_message
         )
         
         if not result.success:
@@ -157,6 +160,7 @@ Please provide helpful, accurate, and context-aware responses based on the team'
             else:
                 system_prompt = self.generate_team_context_system_prompt(
                     team_name=team_name,
+                    user_message=user_message,
                     mode=mode,
                     stages=stages,
                     memory_types=memory_types,
