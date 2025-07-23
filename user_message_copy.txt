@@ -1,0 +1,37 @@
+Background:
+Enhance API to support setting Solution as a step when creating Workflow
+
+Business Value:
+
+Improve workflow flexibility and reusability.
+Allow users to modularize complex solutions and seamlessly integrate them into larger automation processes.
+Simplify workflow creation and maintenance by reusing existing solutions.
+
+Scope In:
+
+Enhance the workflow creation API (POST /api/v1/workflows) to allow steps to reference a Solution.
+Update data models (DTOs, Entities) to support Solution references in workflow steps.
+Validate that referenced Solution IDs exist and are valid when creating workflows.
+Ensure existing workflow query and execution logic can properly handle steps containing Solutions.
+
+Acceptance Criteria:
+
+AC1: Successfully create workflow with Solution steps
+Given a user provides a valid, existing Solution ID as one of the steps in a workflow creation request
+When the user sends a POST request to /api/v1/workflows
+Then the system successfully creates the workflow with steps containing Solution references and returns 201 Created status with new workflow details.
+
+AC2: Create workflow with non-existent Solution
+Given a user provides a non-existent Solution ID in a workflow creation request
+When the user sends a POST request to /api/v1/workflows
+Then the system returns 400 Bad Request error with a clear error message indicating the referenced Solution ID is invalid.
+
+AC3: Workflow with mixed step types
+Given a workflow is created with steps containing both regular Rule/Prompt steps and Solution steps
+When the client requests workflow details
+Then the system returns workflow data that clearly displays all steps and correctly distinguishes between Rule/Prompt steps and Solution steps.
+
+AC4: Data persistence validation
+Given a workflow with Solution steps has been successfully saved to the database
+When developers check the related records in the database
+Then the step information stored in the database correctly and structurally saves Solution references.
