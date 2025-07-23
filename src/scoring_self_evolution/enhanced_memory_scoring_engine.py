@@ -647,6 +647,39 @@ class SelfLearningMemoryScoringEngine:
         self.auto_learning_enabled = True
         self.keyword_discovery_enabled = True
         self.stabilization_enabled = True
+        
+        # 加载学习历史数据（如果有的话）
+        self._load_learning_history()
+    
+    def _load_learning_history(self):
+        """加载学习历史数据"""
+        if hasattr(self, '_matrix_file_data') and self._matrix_file_data:
+            data = self._matrix_file_data
+            
+            # 加载评分历史
+            self.scoring_history = data.get('scoring_history', [])
+            
+            # 加载反馈历史
+            feedback_data = data.get('feedback_history', [])
+            self.feedback_history = []
+            for fb_data in feedback_data:
+                feedback = UserFeedback(
+                    feedback_id=fb_data.get('feedback_id', str(uuid.uuid4())),
+                    memory_id=fb_data.get('memory_id', ''),
+                    query=fb_data.get('query', ''),
+                    rating=fb_data.get('rating', 3),
+                    matched_keywords=fb_data.get('matched_keywords', []),
+                    comment=fb_data.get('comment', '')
+                )
+                if 'timestamp' in fb_data:
+                    feedback.timestamp = datetime.fromisoformat(fb_data['timestamp'])
+                self.feedback_history.append(feedback)
+            
+            # 加载发现关键词日志
+            self.discovered_keywords_log = data.get('discovered_keywords_log', [])
+            
+            # 清除临时数据
+            delattr(self, '_matrix_file_data')
     
     def _load_or_create_matrix(self, matrix_file: Optional[str]) -> SelfLearningKeywordMatrix:
         """加载或创建自学习关键词矩阵"""
@@ -657,6 +690,14 @@ class SelfLearningMemoryScoringEngine:
                     matrix = SelfLearningKeywordMatrix(data.get('version', '3.0.0'))
                     matrix.matrix = data.get('matrix', {})
                     matrix.metadata = data.get('metadata', {})
+                    
+                    # 加载学习参数
+                    if 'learning_parameters' in data:
+                        learning_params = data['learning_parameters']
+                        matrix.learning_rate = learning_params.get('learning_rate', 0.05)
+                        matrix.stabilization_threshold = learning_params.get('stabilization_threshold', 50)
+                        matrix.keyword_discovery_threshold = learning_params.get('keyword_discovery_threshold', 0.7)
+                        matrix.weight_decay = learning_params.get('weight_decay', 0.99)
                     
                     # 加载关键词统计信息
                     if 'keyword_stats' in data:
@@ -679,6 +720,9 @@ class SelfLearningMemoryScoringEngine:
                                 stats.last_seen = datetime.fromisoformat(stats_data['last_seen'])
                             
                             matrix.keyword_stats[key] = stats
+                    
+                    # 加载学习历史数据到引擎中（延迟加载）
+                    self._matrix_file_data = data
                     
                     return matrix
             except Exception as e:
@@ -1002,6 +1046,19 @@ class SelfLearningMemoryScoringEngine:
                 'stability_score': stats.stability_score
             }
         
+        # 转换反馈历史为可序列化格式
+        serializable_feedback = []
+        for feedback in self.feedback_history:
+            serializable_feedback.append({
+                'feedback_id': feedback.feedback_id,
+                'memory_id': feedback.memory_id,
+                'query': feedback.query,
+                'rating': feedback.rating,
+                'matched_keywords': feedback.matched_keywords,
+                'timestamp': feedback.timestamp.isoformat(),
+                'comment': feedback.comment
+            })
+        
         data = {
             'version': self.keyword_matrix.version,
             'created_at': self.keyword_matrix.created_at.isoformat(),
@@ -1018,6 +1075,7 @@ class SelfLearningMemoryScoringEngine:
                 'weight_decay': self.keyword_matrix.weight_decay
             },
             'scoring_history': self.scoring_history,
+            'feedback_history': serializable_feedback,
             'discovered_keywords_log': self.discovered_keywords_log
         }
         
