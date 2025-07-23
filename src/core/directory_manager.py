@@ -37,6 +37,25 @@ class DirectoryManager:
         'config.json': None  # 将动态生成
     }
     
+    # 项目目录结构模板
+    PROJECT_STRUCTURE = {
+        'memory': {
+            'declarative.md': '# 项目声明性记忆\n\n',
+            'procedural.md': '# 项目程序性记忆\n\n',
+            'episodic/': {}
+        },
+        'context': {
+            'requirements.md': '# 项目需求分析上下文\n\n',
+            'business-model.md': '# 项目业务模型上下文\n\n',
+            'solution.md': '# 项目解决方案上下文\n\n',
+            'structure.md': '# 项目架构设计上下文\n\n',
+            'tasks.md': '# 项目任务编排上下文\n\n',
+            'common-tasks.md': '# 项目通用任务上下文\n\n',
+            'constraints.md': '# 项目约束条件上下文\n\n'
+        },
+        'config.json': None  # 将动态生成
+    }
+    
     def __init__(self, root_path: Union[str, Path] = None):
         """
         初始化目录管理器
@@ -281,4 +300,149 @@ class DirectoryManager:
     def team_exists(self, team_name: str) -> bool:
         """检查团队是否存在"""
         team_path = self.get_team_path(team_name)
-        return team_path.exists() and team_path.is_dir() 
+        return team_path.exists() and team_path.is_dir()
+    
+    # === 项目级别管理方法 ===
+    
+    def create_project(self, team_name: str, project_name: str, description: str = "") -> Path:
+        """
+        在指定团队下创建新项目目录结构
+        
+        Args:
+            team_name: 团队名称
+            project_name: 项目名称
+            description: 项目描述
+            
+        Returns:
+            项目目录路径
+            
+        Raises:
+            ValueError: 团队或项目名称无效
+            FileNotFoundError: 团队不存在
+            FileExistsError: 项目已存在
+        """
+        # 验证团队存在
+        if not self.team_exists(team_name):
+            raise FileNotFoundError(f"团队 '{team_name}' 不存在")
+        
+        # 验证项目名称
+        if not self._validate_team_name(project_name):  # 复用团队名称验证逻辑
+            raise ValueError(f"无效的项目名称: {project_name}")
+        
+        project_path = self.get_project_path(team_name, project_name)
+        
+        # 检查项目是否已存在
+        if project_path.exists():
+            raise FileExistsError(f"项目 '{project_name}' 在团队 '{team_name}' 中已存在")
+        
+        # 创建项目目录结构
+        self._create_project_structure(project_path)
+        
+        # 生成项目配置
+        config = self._generate_project_config(project_name, description)
+        self._write_project_config(project_path, config)
+        
+        return project_path
+    
+    def get_project_path(self, team_name: str, project_name: str) -> Path:
+        """获取项目目录路径"""
+        return self.get_team_path(team_name) / "projects" / project_name
+    
+    def project_exists(self, team_name: str, project_name: str) -> bool:
+        """检查项目是否存在"""
+        return self.get_project_path(team_name, project_name).exists()
+    
+    def list_projects(self, team_name: str) -> List[str]:
+        """列出团队下的所有项目"""
+        if not self.team_exists(team_name):
+            return []
+        
+        projects_dir = self.get_team_path(team_name) / "projects"
+        if not projects_dir.exists():
+            return []
+        
+        return [p.name for p in projects_dir.iterdir() if p.is_dir()]
+    
+    def _create_project_structure(self, project_path: Path) -> None:
+        """创建项目目录结构"""
+        def create_structure(base_path: Path, structure: Dict):
+            for name, content in structure.items():
+                path = base_path / name
+                
+                if name.endswith('/'):
+                    # 目录
+                    path.mkdir(exist_ok=True)
+                    if isinstance(content, dict):
+                        create_structure(path, content)
+                elif isinstance(content, dict):
+                    # 嵌套字典表示子目录结构
+                    path.mkdir(exist_ok=True)
+                    create_structure(path, content)
+                else:
+                    # 文件
+                    if content is not None:
+                        path.write_text(content, encoding='utf-8')
+                    elif name == 'config.json':
+                        # config.json需要特殊处理，跳过这里，在后面单独创建
+                        pass
+        
+        # 创建项目根目录
+        project_path.mkdir(parents=True, exist_ok=True)
+        
+        # 创建项目结构
+        create_structure(project_path, self.PROJECT_STRUCTURE)
+    
+    def _generate_project_config(self, project_name: str, description: str) -> Dict:
+        """生成项目配置"""
+        return {
+            'name': project_name,
+            'description': description,
+            'created_at': datetime.now().isoformat(),
+            'version': '1.0.0',
+            'type': 'project',
+            'memory_config': {
+                'max_entries_per_type': 100,
+                'auto_cleanup_days': 90,
+                'importance_threshold': 1
+            }
+        }
+    
+    def _write_project_config(self, project_path: Path, config: Dict) -> None:
+        """写入项目配置文件"""
+        config_path = project_path / 'config.json'
+        config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding='utf-8')
+    
+    def repair_project_structure(self, team_name: str, project_name: str) -> List[str]:
+        """修复项目目录结构"""
+        project_path = self.get_project_path(team_name, project_name)
+        repaired = []
+        
+        def repair_structure(base_path: Path, structure: Dict):
+            for name, content in structure.items():
+                path = base_path / name
+                
+                if name.endswith('/'):
+                    # 目录
+                    if not path.exists():
+                        path.mkdir(parents=True, exist_ok=True)
+                        repaired.append(f"创建目录: {path}")
+                    
+                    if isinstance(content, dict):
+                        repair_structure(path, content)
+                elif isinstance(content, dict):
+                    # 嵌套字典表示子目录结构
+                    if not path.exists():
+                        path.mkdir(parents=True, exist_ok=True)
+                        repaired.append(f"创建目录: {path}")
+                    repair_structure(path, content)
+                else:
+                    # 文件
+                    if not path.exists() and content is not None:
+                        path.write_text(content, encoding='utf-8')
+                        repaired.append(f"创建文件: {path}")
+                    elif name == 'config.json' and not path.exists():
+                        # config.json需要特殊处理，跳过这里
+                        pass
+        
+        repair_structure(project_path, self.PROJECT_STRUCTURE)
+        return repaired 

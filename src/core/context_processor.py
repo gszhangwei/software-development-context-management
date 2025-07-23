@@ -6,6 +6,7 @@ ContextX上下文处理器
 - seven_stage_framework七阶段模块的组装
 - 混合模式：记忆+七阶段框架的融合
 - 基于场景的上下文定制
+- 集成增强评分算法用于智能记忆选择
 """
 
 import re
@@ -18,6 +19,10 @@ from enum import Enum
 
 from .markdown_engine import MarkdownEngine, MemoryEntry, ContextSection
 from .directory_manager import DirectoryManager
+
+# 增强评分算法配置
+ENABLE_ENHANCED_SCORING = True  # 是否启用增强评分算法
+ENHANCED_SCORING_DEBUG = False  # 是否显示增强评分的调试信息
 
 
 class ContextMode(Enum):
@@ -39,12 +44,14 @@ class MemoryType(Enum):
 class ContextGenerationConfig:
     """上下文生成配置"""
     team_name: str
+    project_name: Optional[str] = None  # 新增：项目名称，None表示使用团队级别记忆
     mode: ContextMode = ContextMode.HYBRID
     
     # 记忆相关配置
     include_memory_types: List[MemoryType] = field(default_factory=lambda: [MemoryType.ALL])
     max_memory_items: int = 50
     memory_importance_threshold: int = 2
+    include_team_memories: bool = True  # 新增：是否包含团队级别的通用记忆
     
     # 框架相关配置
     include_framework_stages: List[str] = field(default_factory=lambda: [
@@ -52,7 +59,7 @@ class ContextGenerationConfig:
         "tasks", "common-tasks", "constraints"
     ])
     
-    # 过滤条件
+    # 过滤条件 (project_scope保留用于向后兼容)
     project_scope: Optional[str] = None
     time_range: Optional[Tuple[str, str]] = None
     memory_filters: Dict[str, Any] = field(default_factory=dict)
@@ -326,11 +333,11 @@ class ContextProcessor:
                     ""
                 ])
                 
-                # 3. 加载团队自定义上下文（如果存在且有实际内容）
-                team_content = self._load_team_context_file(team_path, stage)
-                if team_content and team_content.strip():
+                # 3. 加载项目或团队自定义上下文（如果存在且有实际内容）
+                context_content = self._load_context_file(team_path, stage, config)
+                if context_content and context_content.strip():
                     content_sections.extend([
-                        team_content,
+                        context_content,
                         ""
                     ])
                 
@@ -351,7 +358,7 @@ class ContextProcessor:
         )
     
     def _load_team_memories(self, team_path: Path, config: ContextGenerationConfig) -> List[MemoryEntry]:
-        """加载团队记忆"""
+        """加载团队或项目记忆"""
         memories = []
         
         # 根据配置决定加载哪些类型的记忆
@@ -359,36 +366,28 @@ class ContextProcessor:
         if MemoryType.ALL in memory_types_to_load:
             memory_types_to_load = [MemoryType.DECLARATIVE, MemoryType.PROCEDURAL, MemoryType.EPISODIC]
         
-        # 加载声明性记忆
-        if MemoryType.DECLARATIVE in memory_types_to_load:
-            declarative_path = team_path / "memory" / "declarative.md"
-            if declarative_path.exists():
-                declarative_memories = self.markdown_engine.load_memories(declarative_path)
-                for memory in declarative_memories:
-                    memory.memory_type = "declarative"
-                memories.extend(declarative_memories)
+        # 如果指定了项目，优先加载项目级别的记忆
+        if config.project_name:
+            project_path = team_path / "projects" / config.project_name
+            if project_path.exists():
+                project_memories = self._load_memories_from_path(project_path, memory_types_to_load, f"project:{config.project_name}")
+                memories.extend(project_memories)
         
-        # 加载程序性记忆
-        if MemoryType.PROCEDURAL in memory_types_to_load:
-            procedural_path = team_path / "memory" / "procedural.md"
-            if procedural_path.exists():
-                procedural_memories = self.markdown_engine.load_memories(procedural_path)
-                for memory in procedural_memories:
-                    memory.memory_type = "procedural"
-                memories.extend(procedural_memories)
+        # 如果配置了包含团队记忆，或者没有指定项目，加载团队级别的记忆
+        if config.include_team_memories or not config.project_name:
+            team_memories = self._load_memories_from_path(team_path, memory_types_to_load, "team")
+            memories.extend(team_memories)
         
-        # 加载情景性记忆
-        if MemoryType.EPISODIC in memory_types_to_load:
-            episodic_dir = team_path / "memory" / "episodic"
-            if episodic_dir.exists():
-                for episodic_file in episodic_dir.glob("*.md"):
-                    episodic_memories = self.markdown_engine.load_memories(episodic_file)
-                    for memory in episodic_memories:
-                        memory.memory_type = "episodic"
-                    memories.extend(episodic_memories)
+        # 去重：基于记忆ID去除重复项，保留第一个（项目记忆优先）
+        seen_ids = set()
+        unique_memories = []
+        for memory in memories:
+            if memory.id not in seen_ids:
+                seen_ids.add(memory.id)
+                unique_memories.append(memory)
         
         # 应用过滤器
-        filtered_memories = self._apply_memory_filters(memories, config)
+        filtered_memories = self._apply_memory_filters(unique_memories, config)
         
         # 按重要性和时间排序
         filtered_memories.sort(
@@ -398,6 +397,69 @@ class ContextProcessor:
         
         # 限制数量
         return filtered_memories[:config.max_memory_items]
+    
+    def _load_memories_from_path(self, base_path: Path, memory_types_to_load: List[MemoryType], source_label: str) -> List[MemoryEntry]:
+        """从指定路径加载记忆"""
+        memories = []
+        
+        # 加载声明性记忆
+        if MemoryType.DECLARATIVE in memory_types_to_load:
+            declarative_path = base_path / "memory" / "declarative.md"
+            if declarative_path.exists():
+                declarative_memories = self.markdown_engine.load_memories(declarative_path)
+                for memory in declarative_memories:
+                    memory.memory_type = "declarative"
+                    memory.source = source_label  # 标记记忆来源
+                memories.extend(declarative_memories)
+        
+        # 加载程序性记忆
+        if MemoryType.PROCEDURAL in memory_types_to_load:
+            procedural_path = base_path / "memory" / "procedural.md"
+            if procedural_path.exists():
+                # 使用专门的解析器处理procedural.md格式
+                try:
+                    from .procedural_memory_parser import load_procedural_memories
+                    memory_items = load_procedural_memories(procedural_path)
+                    
+                    # 转换为MemoryEntry格式
+                    for memory_item in memory_items:
+                        memory_entry = MemoryEntry(
+                            id=memory_item.id,
+                            timestamp=datetime.now().isoformat(),  # 使用当前时间
+                            content=memory_item.content,
+                            tags=memory_item.tags,
+                            project=memory_item.project,
+                            importance=memory_item.importance,
+                            source=source_label
+                        )
+                        memory_entry.memory_type = "procedural"
+                        memories.append(memory_entry)
+                    
+                    if ENHANCED_SCORING_DEBUG:
+                        print(f"🔍 使用专门解析器加载procedural.md: {len(memory_items)} 个记忆条目")
+                        
+                except ImportError:
+                    # 回退到原始解析器
+                    if ENHANCED_SCORING_DEBUG:
+                        print("⚠️ 专门解析器不可用，使用原始解析器")
+                    procedural_memories = self.markdown_engine.load_memories(procedural_path)
+                    for memory in procedural_memories:
+                        memory.memory_type = "procedural"
+                        memory.source = source_label  # 标记记忆来源
+                    memories.extend(procedural_memories)
+        
+        # 加载情景性记忆
+        if MemoryType.EPISODIC in memory_types_to_load:
+            episodic_dir = base_path / "memory" / "episodic"
+            if episodic_dir.exists():
+                for episodic_file in episodic_dir.glob("*.md"):
+                    episodic_memories = self.markdown_engine.load_memories(episodic_file)
+                    for memory in episodic_memories:
+                        memory.memory_type = "episodic"
+                        memory.source = source_label  # 标记记忆来源
+                    memories.extend(episodic_memories)
+        
+        return memories
     
     def _apply_memory_filters(self, memories: List[MemoryEntry], config: ContextGenerationConfig) -> List[MemoryEntry]:
         """应用记忆过滤器"""
@@ -457,8 +519,36 @@ class ContextProcessor:
             return stage_file.read_text(encoding='utf-8')
         return None
     
+    def _load_context_file(self, team_path: Path, stage: str, config: ContextGenerationConfig) -> Optional[str]:
+        """加载项目或团队特定的上下文文件，项目优先"""
+        content_parts = []
+        
+        # 如果指定了项目，优先加载项目上下文
+        if config.project_name:
+            project_path = team_path / "projects" / config.project_name
+            project_context_file = project_path / "context" / f"{stage}.md"
+            if project_context_file.exists():
+                project_content = project_context_file.read_text(encoding='utf-8')
+                filtered_content = self._filter_team_context_content(project_content)
+                if filtered_content and filtered_content.strip():
+                    content_parts.append(f"## 项目上下文 ({config.project_name})")
+                    content_parts.append(filtered_content)
+        
+        # 如果配置了包含团队上下文，或者没有指定项目，加载团队上下文
+        if config.include_team_memories or not config.project_name:
+            team_context_file = team_path / "context" / f"{stage}.md"
+            if team_context_file.exists():
+                team_content = team_context_file.read_text(encoding='utf-8')
+                filtered_content = self._filter_team_context_content(team_content)
+                if filtered_content and filtered_content.strip():
+                    if content_parts:  # 如果已有项目上下文，添加分隔
+                        content_parts.append("## 团队上下文")
+                    content_parts.append(filtered_content)
+        
+        return "\n\n".join(content_parts) if content_parts else None
+    
     def _load_team_context_file(self, team_path: Path, stage: str) -> Optional[str]:
-        """加载团队特定的上下文文件，过滤掉元数据部分"""
+        """加载团队特定的上下文文件，过滤掉元数据部分（向后兼容方法）"""
         context_file = team_path / "context" / f"{stage}.md"
         if context_file.exists():
             content = context_file.read_text(encoding='utf-8')
@@ -639,7 +729,51 @@ class ContextProcessor:
         return list(set(keywords))  # 去重
     
     def _calculate_memory_relevance_score(self, memory: MemoryEntry, message_keywords: List[str], full_message: str) -> float:
-        """计算记忆与用户消息的相关性分数"""
+        """计算记忆与用户消息的相关性分数（集成增强评分算法）"""
+        
+        # 检查是否启用增强评分算法
+        if ENABLE_ENHANCED_SCORING:
+            try:
+                # 尝试使用增强的评分引擎
+                from tools.enhanced_memory_scoring_engine import create_enhanced_scoring_engine, MemoryItem
+                
+                # 将MemoryEntry转换为MemoryItem
+                memory_item = MemoryItem(
+                    id=memory.id,
+                    title=getattr(memory, 'title', memory.id),
+                    content=memory.content,
+                    tags=memory.tags,
+                    project=memory.project,
+                    importance=memory.importance
+                )
+                
+                # 创建增强评分引擎
+                scoring_engine = create_enhanced_scoring_engine()
+                
+                # 使用增强评分算法
+                results = scoring_engine.score_memory_items(full_message, [memory_item])
+                
+                if results:
+                    enhanced_score = results[0].total_score
+                    
+                    if ENHANCED_SCORING_DEBUG:
+                        print(f"🔍 增强评分 - {memory.id}: {enhanced_score:.2f}")
+                        print(f"   匹配关键词: {', '.join(results[0].matched_keywords[:5])}")
+                        print(f"   关键优势: {', '.join(results[0].key_strengths[:3])}")
+                    
+                    # 返回增强评分结果
+                    return enhanced_score
+                    
+            except ImportError:
+                # 如果增强评分引擎不可用，回退到原始算法
+                if ENHANCED_SCORING_DEBUG:
+                    print("⚠️ 增强评分引擎不可用，使用原始算法")
+            except Exception as e:
+                # 如果增强评分出现错误，回退到原始算法
+                if ENHANCED_SCORING_DEBUG:
+                    print(f"⚠️ 增强评分算法出错，回退到原始算法: {e}")
+        
+        # 原始评分算法（作为回退方案）
         score = 0.0
         
         # 1. 标签匹配 (权重: 3.0)
@@ -669,10 +803,111 @@ class ContextProcessor:
             if phrase in memory_content_lower:
                 score += 4.0
         
-        # 5. 重要性加权
+        # 5. 语义相关性匹配 (权重: 1.5倍，因为语义比字面匹配更重要)
+        semantic_score = self._calculate_semantic_relevance(memory, message_keywords, full_message)
+        score += semantic_score * 1.5  # 提高语义相关性的权重
+        
+        # 6. 重要性加权
         score *= (memory.importance / 3.0)  # 重要性归一化到相对权重
         
         return score
+    
+    def _calculate_semantic_relevance(self, memory: MemoryEntry, message_keywords: List[str], full_message: str) -> float:
+        """计算语义相关性得分 - 基于通用语义匹配原则"""
+        semantic_score = 0.0
+        full_message_lower = full_message.lower()
+        memory_content_lower = memory.content.lower()
+        memory_tags_lower = ' '.join(memory.tags).lower()
+        memory_text = memory_content_lower + ' ' + memory_tags_lower
+        
+        # 1. 领域概念密度评分 (0-10分)
+        # 计算用户消息和记忆内容中共同技术概念的密度
+        domain_keywords = ['api', 'workflow', 'solution', 'rule', 'step', 'validation', 'model', 
+                          'architecture', 'design', 'service', 'id', 'reference', 'create', 'update']
+        
+        user_domain_concepts = [kw for kw in message_keywords if kw in domain_keywords]
+        memory_domain_matches = sum(1 for concept in user_domain_concepts if concept in memory_text)
+        
+        if user_domain_concepts:
+            domain_density = (memory_domain_matches / len(user_domain_concepts)) * 10
+            semantic_score += domain_density
+        
+        # 2. 问题-解决方案匹配度 (0-15分)
+        # 检测用户消息中的问题类型，评估记忆是否提供相应解决方案
+        problem_solution_pairs = [
+            (['enhance', 'improve', 'add', 'support'], ['design', 'architecture', 'implementation', 'approach']),
+            (['validate', 'check', 'ensure'], ['validation', 'verification', 'logic', 'mechanism']),
+            (['reference', 'link', 'connect'], ['relationship', 'mapping', 'association', 'routing']),
+            (['create', 'build', 'generate'], ['creation', 'construction', 'generation', 'workflow']),
+            (['model', 'structure', 'entity'], ['class', 'inheritance', 'hierarchy', 'design'])
+        ]
+        
+        for problem_words, solution_words in problem_solution_pairs:
+            has_problem = any(word in message_keywords for word in problem_words)
+            has_solution = any(word in memory_text for word in solution_words)
+            if has_problem and has_solution:
+                semantic_score += 3.0  # 每个问题-解决方案匹配得3分
+        
+        # 3. 复合概念匹配 (0-20分)
+        # 识别用户消息中的复合概念，并在记忆中寻找语义相关的解决方案
+        import re
+        
+        # 提取用户消息中的关键短语
+        user_phrases = re.findall(r'[a-z]+(?:\s+[a-z]+){1,2}', full_message_lower)
+        
+        # 定义复合概念的语义映射
+        concept_mappings = [
+            # Solution as step 核心概念
+            (['solution as step', 'solution.*step', 'setting solution.*step'], 
+             ['orderedsteps', 'step.*solution', 'solution.*workflow', 'list.*string']),
+            
+            # Reference and ID concepts  
+            (['solution reference', 'solution.*id', 'reference.*solution'], 
+             ['id.*prefix', 'prefix.*identification', 's_.*uuid', 'service.*routing']),
+            
+            # Validation concepts
+            (['validate.*solution', 'ensure.*valid', 'validate.*exist'],
+             ['validation.*logic', 'exist.*rule', 'prompt.*exist', 'routing.*service']),
+            
+            # Workflow creation concepts
+            (['workflow creation', 'creating workflow', 'workflow.*api'],
+             ['create.*workflow', 'workflow.*design', 'api.*design', 'controller.*service']),
+            
+            # Data model concepts
+            (['data model', 'dto.*entit', 'model.*support'],
+             ['inherit.*relation', 'class.*design', 'architecture.*design', 'prompt.*base'])
+        ]
+        
+        for user_patterns, memory_patterns in concept_mappings:
+            user_match = False
+            memory_match = False
+            
+            # 检查用户消息中的概念
+            for pattern in user_patterns:
+                if re.search(pattern, full_message_lower) or any(pattern.replace('.*', ' ') in phrase for phrase in user_phrases):
+                    user_match = True
+                    break
+            
+            # 检查记忆中的相关解决方案
+            for pattern in memory_patterns:
+                if re.search(pattern, memory_text):
+                    memory_match = True
+                    break
+            
+            # 复合概念匹配给予更高分数
+            if user_match and memory_match:
+                semantic_score += 4.0  # 每个复合概念匹配得4分
+        
+        # 4. 技术栈相关性 (0-5分)
+        # 检查技术栈的匹配度
+        tech_stack_keywords = ['dto', 'entity', 'controller', 'service', 'repository', 'database',
+                              'validation', 'routing', 'prefix', 'inheritance', 'polymorphism']
+        
+        tech_matches = sum(1 for tech in tech_stack_keywords 
+                          if tech in full_message_lower and tech in memory_text)
+        semantic_score += min(5, tech_matches)
+        
+        return semantic_score
     
     def _get_unmatched_memories(self, memories: List[MemoryEntry], stages: List[str]) -> List[MemoryEntry]:
         """获取未匹配到任何阶段的记忆"""
@@ -689,35 +924,38 @@ class ContextProcessor:
 
 
 # 便捷函数
-def create_memory_only_config(team_name: str, **kwargs) -> ContextGenerationConfig:
+def create_memory_only_config(team_name: str, project_name: str = None, **kwargs) -> ContextGenerationConfig:
     """创建仅记忆模式的配置"""
     return ContextGenerationConfig(
         team_name=team_name,
+        project_name=project_name,
         mode=ContextMode.MEMORY_ONLY,
         **kwargs
     )
 
 
-def create_framework_only_config(team_name: str, stages: List[str] = None, **kwargs) -> ContextGenerationConfig:
+def create_framework_only_config(team_name: str, project_name: str = None, stages: List[str] = None, **kwargs) -> ContextGenerationConfig:
     """创建仅框架模式的配置"""
     if stages is None:
         stages = ["requirements", "business-model", "solution", "structure", "tasks", "common-tasks", "constraints"]
     
     return ContextGenerationConfig(
         team_name=team_name,
+        project_name=project_name,
         mode=ContextMode.FRAMEWORK_ONLY,
         include_framework_stages=stages,
         **kwargs
     )
 
 
-def create_hybrid_config(team_name: str, stages: List[str] = None, **kwargs) -> ContextGenerationConfig:
+def create_hybrid_config(team_name: str, project_name: str = None, stages: List[str] = None, **kwargs) -> ContextGenerationConfig:
     """创建混合模式的配置"""
     if stages is None:
         stages = ["requirements", "business-model", "solution", "structure", "tasks", "common-tasks", "constraints"]
     
     return ContextGenerationConfig(
         team_name=team_name,
+        project_name=project_name,
         mode=ContextMode.HYBRID,
         include_framework_stages=stages,
         **kwargs

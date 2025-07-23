@@ -43,7 +43,8 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
     def execute(self, team_name: str, action: str = "generate", 
                 mode: str = "hybrid", stages: str = None, 
                 memory_types: str = "all", output_format: str = "markdown",
-                save_results: bool = True, project_scope: str = None,
+                save_results: bool = True, project_name: str = None,
+                project_scope: str = None, include_team_memories: bool = True,
                 memory_importance: int = 2, max_memory_items: int = 50,
                 tags_filter: str = None, **kwargs) -> CommandResult:
         """
@@ -57,7 +58,9 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
             memory_types: Memory types ('declarative', 'procedural', 'episodic', 'all')
             output_format: Output format ('markdown', 'json')
             save_results: Whether to save generation results
-            project_scope: Project scope filter
+            project_name: Project name for project-level memories (None for team-level)
+            project_scope: Project scope filter (for backward compatibility)
+            include_team_memories: Whether to include team-level memories in project mode
             memory_importance: Memory importance threshold (1-5)
             max_memory_items: Maximum number of memory items
             tags_filter: Tags filter, comma-separated
@@ -79,8 +82,8 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
             if action == "generate":
                 return self._generate_context(
                     team_name, mode, stages, memory_types, output_format,
-                    save_results, project_scope, memory_importance, 
-                    max_memory_items, tags_filter, **kwargs
+                    save_results, project_name, project_scope, include_team_memories,
+                    memory_importance, max_memory_items, tags_filter, **kwargs
                 )
             elif action == "list_modes":
                 return self._list_available_modes()
@@ -105,8 +108,8 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
     
     def _generate_context(self, team_name: str, mode: str, stages: str, 
                          memory_types: str, output_format: str, save_results: bool,
-                         project_scope: str, memory_importance: int,
-                         max_memory_items: int, tags_filter: str,
+                         project_name: str, project_scope: str, include_team_memories: bool,
+                         memory_importance: int, max_memory_items: int, tags_filter: str,
                          user_message: str = None, **kwargs) -> CommandResult:
         """Generate team context"""
         try:
@@ -125,7 +128,8 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
             # Create configuration based on mode
             config = self._create_config(
                 team_name, context_mode, stages, memory_types,
-                project_scope, memory_importance, max_memory_items, tags_filter
+                project_name, project_scope, include_team_memories,
+                memory_importance, max_memory_items, tags_filter
             )
             
             # Generate context
@@ -235,7 +239,8 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
         return parsed_types if parsed_types else [MemoryType.ALL]
     
     def _create_config(self, team_name: str, mode: ContextMode, stages: str,
-                      memory_types: str, project_scope: str, memory_importance: int,
+                      memory_types: str, project_name: str, project_scope: str,
+                      include_team_memories: bool, memory_importance: int,
                       max_memory_items: int, tags_filter: str) -> ContextGenerationConfig:
         """Create context generation configuration"""
         
@@ -253,22 +258,27 @@ class TeamContextCommand(BaseCommand, TeamCommandMixin):
         if mode == ContextMode.MEMORY_ONLY:
             return create_memory_only_config(
                 team_name=team_name,
+                project_name=project_name,
                 include_memory_types=parsed_memory_types,
                 max_memory_items=max_memory_items,
                 memory_importance_threshold=memory_importance,
+                include_team_memories=include_team_memories,
                 project_scope=project_scope,
                 memory_filters=memory_filters
             )
         elif mode == ContextMode.FRAMEWORK_ONLY:
             return create_framework_only_config(
                 team_name=team_name,
+                project_name=project_name,
                 stages=parsed_stages if stages else None
             )
         else:  # HYBRID
             return create_hybrid_config(
                 team_name=team_name,
+                project_name=project_name,
                 stages=parsed_stages if stages else None,
                 include_memory_types=parsed_memory_types,
+                include_team_memories=include_team_memories,
                 max_memory_items=max_memory_items,
                 memory_importance_threshold=memory_importance,
                 project_scope=project_scope,

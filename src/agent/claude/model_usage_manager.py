@@ -41,13 +41,14 @@ class ModelUsageManager:
         
         return [d.name for d in teams_path.iterdir() if d.is_dir()]
     
-    def generate_team_context(self, team_name: str, mode: str = "framework_only") -> Dict[str, Any]:
+    def generate_team_context(self, team_name: str, mode: str = "framework_only", user_message: str = None) -> Dict[str, Any]:
         """
         生成团队上下文
         
         Args:
             team_name: 团队名称
             mode: 上下文模式 (framework_only, memory_only, hybrid)
+            user_message: 用户消息，用于智能选择相关记忆
         
         Returns:
             上下文生成结果
@@ -64,7 +65,8 @@ class ModelUsageManager:
                 max_memory_items=50,
                 tags_filter=None,
                 output_format="json",  # 使用json格式确保能获取到content
-                save_results=False     # 不保存文件，只获取内容
+                save_results=False,    # 不保存文件，只获取内容
+                user_message=user_message  # 传递用户消息用于智能记忆选择
             )
             
             # result是CommandResult对象，不是字典
@@ -163,7 +165,7 @@ class ModelUsageManager:
             对话结果
         """
         # 1. 生成团队上下文
-        context_result = self.generate_team_context(team_name, mode)
+        context_result = self.generate_team_context(team_name, mode, user_message)
         
         if not context_result["success"]:
             return {

@@ -15,7 +15,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .context_processor import ContextProcessor, ContextType, ContextGenerationConfig, GeneratedContext
+from .context_processor import ContextProcessor, ContextGenerationConfig, GeneratedContext, MemoryType
 from .markdown_engine import MarkdownEngine, MemoryEntry
 
 
@@ -249,9 +249,10 @@ class SevenStageEngine:
         # 创建上下文生成配置
         context_config = ContextGenerationConfig(
             team_name=config.team_name,
-            context_types=[stage],
-            include_memories=config.memory_integration,
-            memory_filters=config.memory_filters
+            project_name=getattr(config, 'project_name', None),
+            include_memory_types=[MemoryType.ALL],
+            include_team_memories=config.memory_integration,
+            memory_filters=getattr(config, 'memory_filters', {})
         )
         
         # 生成上下文

@@ -26,6 +26,7 @@ class MemoryEntry:
     project: str = 'general'
     importance: int = 3
     metadata: Dict[str, Any] = None
+    source: str = 'team'  # 新增：记忆来源标识（team, project:xxx）
     
     def __post_init__(self):
         if self.metadata is None:
@@ -97,8 +98,13 @@ class MarkdownEngine:
             elif key == '内容':
                 entry_data['content'] = value
             elif key == '标签':
-                # 解析标签，移除#符号
-                tags = [tag.strip().lstrip('#') for tag in value.split() if tag.strip()]
+                # 解析标签，支持逗号分隔和空格分隔，移除#符号
+                if ',' in value:
+                    # 逗号分隔的标签
+                    tags = [tag.strip().lstrip('#') for tag in value.split(',') if tag.strip()]
+                else:
+                    # 空格分隔的标签（保持向后兼容）
+                    tags = [tag.strip().lstrip('#') for tag in value.split() if tag.strip()]
                 entry_data['tags'] = tags
             elif key == '项目':
                 entry_data['project'] = value

@@ -178,6 +178,7 @@ def main(message_file: str = "user_message.txt", model_name: str = None, context
         
         # 运行综合测试
         print(f"\n🔄 开始运行综合测试...")
+        print(f"💡 使用增强评分算法进行智能记忆选择")
         result = runner.run_comprehensive_test(user_message, context_mode)
         
         # 添加模型信息到结果
