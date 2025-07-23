@@ -10,6 +10,7 @@ Software Development Context Management 是一个面向软件开发团队的智�
 
 - **📋 项目级记忆管理**: 按项目组织团队记忆，支持声明性、程序性和情景性记忆
 - **🧠 智能上下文生成**: 基于用户消息智能匹配相关记忆，生成精准上下文
+- **🤖 System Prompt生成器**: 智能生成针对特定用户消息的System Prompt，并自动保存到指定目录
 - **📐 七步框架**: 结构化的软件开发框架，指导AI生成高质量的技术方案
 - **🔧 多模式支持**: 支持记忆模式、框架模式和混合模式
 - **🎨 灵活配置**: 可配置的记忆过滤、重要性阈值和上下文生成策略
@@ -32,6 +33,7 @@ src/
 │   ├── directory_manager.py      # 目录管理器
 │   ├── markdown_engine.py        # Markdown存储引擎
 │   ├── seven_stage_engine.py     # 七步框架引擎
+│   ├── system_prompt_generator.py # System Prompt生成器
 │   └── ...                       # 其他核心模块
 └── seven_stage_framework/ # 七步开发框架
     ├── 00_overview.md     # 框架概述
@@ -129,6 +131,9 @@ python -m src.commands.team_memory_command my_team add \
     --content "项目的核心架构设计" \
     --tags architecture,design \
     --importance 5
+
+# 使用user_message.txt文件生成System Prompt
+python generate_prompt_for_user_message.py
 ```
 
 ## 💡 核心概念
@@ -164,6 +169,32 @@ teams/
       project_b/
         memory/
         context/
+```
+
+## 🤖 System Prompt 生成器
+
+### 功能特性
+
+- **🔍 智能记忆匹配**: 根据用户消息自动选择最相关的团队记忆
+- **📋 框架集成**: 结合七步开发框架生成结构化的System Prompt
+- **💾 自动保存**: 生成的System Prompt自动保存到 `output/system_prompts/` 目录
+- **🎯 多模式支持**: 支持记忆模式、框架模式和混合模式
+- **⚙️ 灵活配置**: 可配置记忆重要性、最大条目数等参数
+
+### 输出格式
+
+生成的System Prompt文件包含：
+- 生成时间戳和团队信息
+- 用户消息上下文
+- 智能匹配的相关记忆
+- 结构化的开发框架指导
+- 完整的System Prompt内容
+
+### 文件命名规则
+
+```
+{timestamp}_{team_name}_{mode}_system_prompt.txt
+例如: 20250123_125505_engineering_team_hybrid_system_prompt.txt
 ```
 
 ## 🛠️ 七步开发框架
@@ -365,6 +396,7 @@ Fixes #issue_number
 - ✅ 项目级组织
 - ✅ 七步框架
 - ✅ 智能上下文生成
+- ✅ System Prompt生成器
 
 ### v1.1.0 (规划中)
 - 🔄 Web UI界面
