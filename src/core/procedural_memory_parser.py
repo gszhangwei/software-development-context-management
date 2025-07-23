@@ -9,7 +9,7 @@ Procedural Memory Parser
 import re
 from pathlib import Path
 from typing import List
-from tools.enhanced_memory_scoring_engine import MemoryItem
+from src.scoring_self_evolution import MemoryItem
 
 
 class ProceduralMemoryParser:

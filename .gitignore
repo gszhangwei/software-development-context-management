@@ -161,3 +161,6 @@ cython_debug/
 .idea/
 .context/
 output
+src/scoring_self_evolution/learning_report.md
+src/scoring_self_evolution/self_learning_keyword_matrix.json
+src/scoring_self_evolution/self_learning_summary.md

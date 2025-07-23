@@ -22,7 +22,7 @@ from .directory_manager import DirectoryManager
 
 # 增强评分算法配置
 ENABLE_ENHANCED_SCORING = True  # 是否启用增强评分算法
-ENHANCED_SCORING_DEBUG = False  # 是否显示增强评分的调试信息
+ENHANCED_SCORING_DEBUG = True  # 是否显示增强评分的调试信息
 
 
 class ContextMode(Enum):
@@ -653,9 +653,9 @@ class ContextProcessor:
         scored_memories = []
         for memory in memories:
             score = self._calculate_memory_relevance_score(memory, message_keywords, user_message.lower())
-            # 提高相关性阈值：只有分数>=3.0才认为是相关的记忆
-            # 这样可以过滤掉弱相关的记忆，只保留真正相关的内容
-            if score >= 3.0:
+            # 调整相关性阈值：增强评分引擎的分数范围通常更高
+            # 降低阈值以适应新的评分系统
+            if score >= 10.0:
                 scored_memories.append((memory, score))
         
         # 如果没有足够相关的记忆，返回空列表
@@ -735,7 +735,7 @@ class ContextProcessor:
         if ENABLE_ENHANCED_SCORING:
             try:
                 # 尝试使用增强的评分引擎
-                from tools.enhanced_memory_scoring_engine import create_enhanced_scoring_engine, MemoryItem
+                from src.scoring_self_evolution import SelfLearningMemoryScoringEngine, MemoryItem
                 
                 # 将MemoryEntry转换为MemoryItem
                 memory_item = MemoryItem(
@@ -748,7 +748,7 @@ class ContextProcessor:
                 )
                 
                 # 创建增强评分引擎
-                scoring_engine = create_enhanced_scoring_engine()
+                scoring_engine = SelfLearningMemoryScoringEngine()
                 
                 # 使用增强评分算法
                 results = scoring_engine.score_memory_items(full_message, [memory_item])
