@@ -37,7 +37,7 @@ from src.commands.team_context_command import TeamContextCommand
 class SystemPromptGenerator:
     """System Prompt生成器类"""
     
-    def __init__(self, team_data_root: str = "test_data"):
+    def __init__(self, team_data_root: str = ".ContextX"):
         """
         初始化System Prompt生成器
         

@@ -134,12 +134,13 @@ class GeneratedContext:
 class ContextProcessor:
     """上下文处理器"""
     
-    def __init__(self, base_path: Path):
+    def __init__(self, base_path: Path, enable_optimized_scoring: bool = True):
         """
         初始化上下文处理器
         
         Args:
             base_path: 团队数据根目录
+            enable_optimized_scoring: 是否启用优化的评分引擎
         """
         self.base_path = Path(base_path)
         self.directory_manager = DirectoryManager(base_path)
@@ -147,6 +148,19 @@ class ContextProcessor:
         
         # Seven stage framework 路径
         self.framework_path = Path(__file__).parent.parent / "seven_stage_framework"
+        
+        # 初始化优化评分引擎
+        self.enable_optimized_scoring = enable_optimized_scoring
+        self._optimized_scoring_engine = None
+        if enable_optimized_scoring:
+            try:
+                from .optimized_scoring_engine import OptimizedScoringEngine
+                cache_dir = self.base_path / ".scoring_cache"
+                self._optimized_scoring_engine = OptimizedScoringEngine(cache_dir=cache_dir)
+                print("✅ 优化评分引擎已启用")
+            except Exception as e:
+                print(f"⚠️ 优化评分引擎初始化失败，使用原始评分: {e}")
+                self.enable_optimized_scoring = False
         
         # 阶段文件映射
         self.stage_files = {
@@ -638,7 +652,7 @@ class ContextProcessor:
         return relevant_memories
     
     def _find_relevant_memories_by_message(self, memories: List[MemoryEntry], user_message: str) -> List[MemoryEntry]:
-        """根据用户消息智能选择相关记忆"""
+        """根据用户消息智能选择相关记忆（优化版本）"""
         if not user_message or not memories:
             return []
         
@@ -649,14 +663,40 @@ class ContextProcessor:
         if not message_keywords:
             return []
         
-        # 为每个记忆计算相关性分数
-        scored_memories = []
-        for memory in memories:
-            score = self._calculate_memory_relevance_score(memory, message_keywords, user_message.lower())
-            # 调整相关性阈值：增强评分引擎的分数范围通常更高
-            # 降低阈值以适应新的评分系统
-            if score >= 10.0:
-                scored_memories.append((memory, score))
+        # 使用批量评分优化
+        if self.enable_optimized_scoring and self._optimized_scoring_engine:
+            try:
+                # 批量计算评分
+                batch_results = self._optimized_scoring_engine.batch_calculate_scores(
+                    user_message.lower(), 
+                    memories, 
+                    max_workers=4
+                )
+                
+                # 过滤和排序
+                scored_memories = []
+                for memory_id, score, details in batch_results:
+                    if score >= 10.0:  # 相关性阈值
+                        # 找到对应的记忆对象
+                        memory = next((m for m in memories if m.id == memory_id), None)
+                        if memory:
+                            scored_memories.append((memory, score))
+                
+                if ENHANCED_SCORING_DEBUG and scored_memories:
+                    print(f"🚀 批量评分完成: {len(scored_memories)}/{len(memories)} 个记忆符合阈值")
+                    # 显示性能统计
+                    stats = self._optimized_scoring_engine.get_performance_stats()
+                    print(f"   缓存命中率: {stats['cache_hit_rate']}")
+                    print(f"   平均响应时间: {stats['avg_response_time']:.3f}s")
+                
+            except Exception as e:
+                if ENHANCED_SCORING_DEBUG:
+                    print(f"⚠️ 批量评分失败，使用单独评分: {e}")
+                # 回退到单独评分
+                scored_memories = self._calculate_individual_scores(memories, message_keywords, user_message.lower())
+        else:
+            # 使用单独评分
+            scored_memories = self._calculate_individual_scores(memories, message_keywords, user_message.lower())
         
         # 如果没有足够相关的记忆，返回空列表
         if not scored_memories:
@@ -666,6 +706,17 @@ class ContextProcessor:
         scored_memories.sort(key=lambda x: (x[1], x[0].importance), reverse=True)
         
         return [memory for memory, score in scored_memories]
+    
+    def _calculate_individual_scores(self, memories: List[MemoryEntry], message_keywords: List[str], user_message: str) -> List[Tuple[MemoryEntry, float]]:
+        """单独计算每个记忆的评分（原始方法）"""
+        scored_memories = []
+        for memory in memories:
+            score = self._calculate_memory_relevance_score(memory, message_keywords, user_message)
+            # 调整相关性阈值：增强评分引擎的分数范围通常更高
+            # 降低阈值以适应新的评分系统
+            if score >= 10.0:
+                scored_memories.append((memory, score))
+        return scored_memories
     
     def _extract_keywords_from_message(self, message: str) -> List[str]:
         """从用户消息中提取关键词"""
@@ -729,9 +780,26 @@ class ContextProcessor:
         return list(set(keywords))  # 去重
     
     def _calculate_memory_relevance_score(self, memory: MemoryEntry, message_keywords: List[str], full_message: str) -> float:
-        """计算记忆与用户消息的相关性分数（集成增强评分算法）"""
+        """计算记忆与用户消息的相关性分数（集成优化评分算法）"""
         
-        # 检查是否启用增强评分算法
+        # 优先使用优化评分引擎
+        if self.enable_optimized_scoring and self._optimized_scoring_engine:
+            try:
+                score, details = self._optimized_scoring_engine.calculate_memory_score(full_message, memory)
+                
+                if ENHANCED_SCORING_DEBUG:
+                    print(f"🚀 优化评分 - {memory.id}: {score:.2f}")
+                    print(f"   匹配关键词: {', '.join(details.get('matched_keywords', [])[:5])}")
+                    print(f"   关键优势: {', '.join(details.get('key_strengths', [])[:3])}")
+                    print(f"   缓存状态: {'命中' if details.get('cached') else '未命中'}")
+                
+                return score
+                
+            except Exception as e:
+                if ENHANCED_SCORING_DEBUG:
+                    print(f"⚠️ 优化评分引擎出错，回退到增强算法: {e}")
+        
+        # 回退到增强评分算法
         if ENABLE_ENHANCED_SCORING:
             try:
                 # 尝试使用增强的评分引擎
@@ -908,6 +976,26 @@ class ContextProcessor:
         semantic_score += min(5, tech_matches)
         
         return semantic_score
+    
+    def get_scoring_performance_stats(self) -> Dict:
+        """获取评分引擎性能统计"""
+        if self.enable_optimized_scoring and self._optimized_scoring_engine:
+            return self._optimized_scoring_engine.get_performance_stats()
+        return {'message': '优化评分引擎未启用'}
+    
+    def save_scoring_engine_state(self):
+        """保存评分引擎状态"""
+        if self.enable_optimized_scoring and self._optimized_scoring_engine:
+            self._optimized_scoring_engine.save_state()
+            print("✅ 评分引擎状态已保存")
+    
+    def update_keyword_weight(self, keyword: str, dimension: str, weight: float, confidence: float = 0.8):
+        """更新关键词权重"""
+        if self.enable_optimized_scoring and self._optimized_scoring_engine:
+            self._optimized_scoring_engine.update_keyword_weight(keyword, dimension, weight, confidence)
+            print(f"✅ 关键词权重已更新: {keyword} ({dimension}) = {weight}")
+        else:
+            print("⚠️ 优化评分引擎未启用，无法更新权重")
     
     def _get_unmatched_memories(self, memories: List[MemoryEntry], stages: List[str]) -> List[MemoryEntry]:
         """获取未匹配到任何阶段的记忆"""

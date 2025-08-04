@@ -15,6 +15,7 @@ from typing import Dict, List, Any
 
 from .base_command import BaseCommand, CommandResult, TeamCommandMixin
 from ..core.markdown_engine import MemoryEntry
+from ..scoring_self_evolution import SelfLearningMemoryScoringEngine
 
 
 class TeamMemoryCommand(BaseCommand, TeamCommandMixin):
@@ -37,8 +38,6 @@ class TeamMemoryCommand(BaseCommand, TeamCommandMixin):
         """获取或创建自学习评分引擎"""
         if self._scoring_engine is None:
             try:
-                from ..scoring_self_evolution import SelfLearningMemoryScoringEngine
-                
                 # 确定矩阵文件路径
                 team_path = self.directory_manager.get_team_path(team_name)
                 self._matrix_file_path = team_path / "memory" / "keyword_matrix.json"
